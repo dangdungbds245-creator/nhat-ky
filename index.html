@@ -425,7 +425,7 @@ function lockUI(){
   $('#lkBtn').textContent=first?'Tạo & vào':'Mở khoá';
   $('#pw1').value=$('#pw2').value='';$('#lkErr').textContent='';
   $('#bioBtn').classList.toggle('hidden',first||!bioOn());
-  $('#linkBtn').classList.toggle('hidden',!first);$('#linkBox').classList.add('hidden');
+  $('#linkBtn').classList.remove('hidden');$('#linkBox').classList.add('hidden');
   if(first)$('#lkSub').textContent='Đặt mật khẩu. Nếu quên sẽ không khôi phục được nhật ký đã mã hoá!';
 }
 const bioOn=()=>!!(window.PublicKeyCredential&&canCrypto&&localStorage.getItem('nk_bio'));
@@ -669,6 +669,11 @@ async function linkDevice(){
     if(g.status!==200)return err.textContent='Máy chủ lỗi '+g.status;
     const key=await deriveKey(p,g.j.salt);
     try{await dec(g.j.chk,key)}catch{return err.textContent='Mật khẩu chưa đúng'}
+    if(hasPw()){                                   // máy này đã có nhật ký riêng → hỏi trước khi thay
+      if(!confirm('Máy này đang có nhật ký riêng.\n\nNối đồng bộ sẽ XOÁ nhật ký hiện có trên máy này và thay bằng nhật ký từ mã đồng bộ (nhật ký trên máy khác không bị ảnh hưởng).\n\nTiếp tục?'))return err.textContent='';
+      for(const k of ['nk_data','nk_pw','nk_salt','nk_lastw','nk_lastsync','nk_bio','nk_sync','nk_remd'])localStorage.removeItem(k);
+      await pClear().catch(()=>{});await kDel('key').catch(()=>{});
+    }
     localStorage.setItem(K.salt,g.j.salt);localStorage.setItem(K.pw,await hash(p,g.j.salt));localStorage.setItem('nk_sync',code);
     await unlock(key);
   }catch(e){err.textContent='Không kết nối được: '+(e.message||e)}}
