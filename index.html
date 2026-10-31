@@ -159,6 +159,8 @@ input[type=time]{font:inherit;color:inherit;background:var(--bg);border:1px soli
 .ab{display:flex;align-items:center;gap:14px;padding:12px 0}
 .ab small{display:block;color:var(--mute)}
 .av{width:64px;height:64px;border-radius:50%;overflow:hidden;background:var(--acc2);display:flex;align-items:center;justify-content:center;font-size:30px;flex:none}
+
+.codebox{font:600 1.05em/1.4 ui-monospace,Menlo,monospace;letter-spacing:.04em}
 #toast{position:fixed;left:50%;bottom:110px;transform:translateX(-50%);background:#333;color:#fff;padding:8px 16px;border-radius:20px;font-size:.88em;z-index:60;opacity:0;transition:.3s;pointer-events:none}
 #toast.on{opacity:1}
 </style>
@@ -175,6 +177,12 @@ input[type=time]{font:inherit;color:inherit;background:var(--bg);border:1px soli
     <input id="pw2" type="password" placeholder="Nhập lại mật khẩu" class="hidden" autocomplete="off">
     <button class="btn" id="lkBtn">Mở khoá</button>
     <button class="btn ghost hidden" id="bioBtn" style="margin-top:10px">🔐 Mở bằng vân tay / Face ID</button>
+    <button class="btn ghost hidden" id="linkBtn" style="margin-top:10px">🔗 Đã có nhật ký ở thiết bị khác? Nhập mã đồng bộ</button>
+    <div id="linkBox" class="hidden" style="margin-top:10px">
+      <input id="lkCode" placeholder="Mã đồng bộ (XXXXX-XXXXX-XXXXX-XXXXX)" autocapitalize="characters" autocomplete="off">
+      <input id="lkPwL" type="password" placeholder="Mật khẩu nhật ký" autocomplete="off">
+      <button class="btn" id="linkGo">Kết nối</button>
+    </div>
     <div class="err" id="lkErr"></div>
     <div class="copy">© 2026 Đăng Dũng · Bảo lưu mọi quyền</div>
   </div>
@@ -219,6 +227,16 @@ input[type=time]{font:inherit;color:inherit;background:var(--bg);border:1px soli
       <div class="sec">
         <div class="row"><div>🔒 Mã hoá nội dung<small id="encInfo"></small></div></div>
         <div class="row hidden" id="bioRow"><div>Mở bằng vân tay / Face ID<small>Chỉ dùng trên thiết bị này</small></div><input type="checkbox" class="sw" id="sBio"></div>
+      </div>
+      <div class="sec" id="syncSec">
+        <div class="row"><div>☁️ Đồng bộ nhiều thiết bị<small id="syncInfo">Đang tắt</small></div></div>
+        <div id="syncOff"><button class="btn" id="syncOn">Bật đồng bộ</button></div>
+        <div id="syncOnBox" class="hidden">
+          <div class="row"><div>Mã đồng bộ<small class="codebox" id="syncCodeTxt">•••••-•••••-•••••-•••••</small></div><button class="chip" id="syncShow">Hiện</button></div>
+          <button class="btn ghost" id="syncNow">🔄 Đồng bộ ngay</button>
+          <button class="btn danger" id="syncOffBtn">Tắt đồng bộ</button>
+        </div>
+        <div class="note">Nhật ký được mã hoá ngay trên máy trước khi gửi đi, máy chủ không đọc được nội dung. Trên thiết bị khác: chọn "Nhập mã đồng bộ" ở màn hình đầu tiên, nhập mã này cùng mật khẩu nhật ký. Khi đang bật đồng bộ thì không đổi được mật khẩu.</div>
       </div>
       <div class="sec">
         <div class="row"><div>🌙 Nhắc viết nhật ký mỗi tối</div><input type="checkbox" class="sw" id="sRem"></div>
@@ -317,6 +335,7 @@ const parse=k=>{const [y,m,d]=k.split('-').map(Number);return new Date(y,m-1,d)}
 const toast=m=>{const t=$('#toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),1800)};
 
 let entries={};   // nạp & giải mã sau khi mở khoá
+let tombs={};     // bài đã xoá {id: thời điểm xoá} — để đồng bộ việc xoá
 let S=Object.assign({dark:false,font:16,lock:5,quote:true,remOn:false,remTime:'21:00'},get(K.set,{}));
 let calM=new Date(); calM.setDate(1);
 const migrate=o=>{const r={};for(const k in o){const e=o[k];if(/^\d{4}-\d\d-\d\d$/.test(k))r['e'+k.replace(/-/g,'')+'a']=Object.assign({date:k},e);else r[k]=e}return r};
@@ -356,9 +375,9 @@ const kDel=k=>tx('k','readwrite',s=>s.delete(k));
 const pCache={};
 async function pUrl(id){if(pCache[id])return pCache[id];const v=await pGet(id).catch(()=>null);if(v)pCache[id]=v;return v}
 function resize(file){return new Promise((res,rej)=>{const img=new Image(),u=URL.createObjectURL(file);
-  img.onload=()=>{const M=1280,k=Math.min(1,M/Math.max(img.width,img.height)),c=document.createElement('canvas');
+  img.onload=()=>{const M=1100,k=Math.min(1,M/Math.max(img.width,img.height)),c=document.createElement('canvas');
     c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-    URL.revokeObjectURL(u);res(c.toDataURL('image/jpeg',.82))};img.onerror=rej;img.src=u})}
+    URL.revokeObjectURL(u);res(c.toDataURL('image/jpeg',.78))};img.onerror=rej;img.src=u})}
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const tagsOf=e=>[...new Set(((e.title||'')+' '+(e.body||'')).match(/#[\p{L}\d_]+/gu)||[])].map(t=>t.toLowerCase());
 
@@ -406,6 +425,7 @@ function lockUI(){
   $('#lkBtn').textContent=first?'Tạo & vào':'Mở khoá';
   $('#pw1').value=$('#pw2').value='';$('#lkErr').textContent='';
   $('#bioBtn').classList.toggle('hidden',first||!bioOn());
+  $('#linkBtn').classList.toggle('hidden',!first);$('#linkBox').classList.add('hidden');
   if(first)$('#lkSub').textContent='Đặt mật khẩu. Nếu quên sẽ không khôi phục được nhật ký đã mã hoá!';
 }
 const bioOn=()=>!!(window.PublicKeyCredential&&canCrypto&&localStorage.getItem('nk_bio'));
@@ -437,9 +457,9 @@ async function bioUnlock(){
 async function unlock(k){
   KEY=k;
   try{await loadData()}catch(e){KEY=null;$('#lkErr').textContent='Không giải mã được dữ liệu';return}
-  $('#lock').classList.add('hidden');$('#app').classList.remove('hidden');loadSet();render();bump()}
+  $('#lock').classList.add('hidden');$('#app').classList.remove('hidden');loadSet();render();bump();sync()}
 function lock(){
-  KEY=null;entries={};Object.keys(pCache).forEach(k=>delete pCache[k]);
+  KEY=null;entries={};tombs={};Object.keys(pCache).forEach(k=>delete pCache[k]);
   ['#listBox','#topCard','#chips','#dayPanel','#calGrid','#photos','#rPh','#rBody','#rTitle'].forEach(s=>{$(s).innerHTML=''});
   $('#eTitle').value=$('#eBody').value='';$('#light').classList.add('hidden');$('#lightImg').removeAttribute('src');
   $('#sheet').classList.add('hidden');$('#reader').classList.add('hidden');$('#app').classList.add('hidden');$('#lock').classList.remove('hidden');lockUI();$('#pw1').focus()}
@@ -452,14 +472,16 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden&&!picking&&
 
 /* ---------- render ---------- */
 let saveQ=Promise.resolve();
-const save=()=>{const snap=JSON.stringify(entries),k=KEY;
+const save=(noSync)=>{const snap=JSON.stringify({v:2,entries,tombs}),k=KEY;
+  if(!noSync)scheduleSync();
   if(canCrypto&&!k)return saveQ;
   saveQ=saveQ.then(async()=>{try{localStorage.setItem(K.data,JSON.stringify(k?await enc(snap,k):JSON.parse(snap)))}catch(e){toast('Không lưu được dữ liệu')}});
   return saveQ};
 async function loadData(){
   const raw=get(K.data,{});
   const wasEnc=!!(raw&&raw.enc);
-  entries=wasEnc?JSON.parse(await dec(raw)):(raw||{});
+  const obj=wasEnc?JSON.parse(await dec(raw)):(raw||{});
+  if(obj&&obj.v===2){entries=obj.entries||{};tombs=obj.tombs||{}}else{entries=obj||{};tombs={}}
   entries=migrate(entries);
   if(KEY&&!wasEnc&&Object.keys(entries).length){            // nâng cấp dữ liệu cũ lên mã hoá
     await save();
@@ -576,6 +598,81 @@ function quoteHtml(){
   const [t,a]=QUOTES[(dayNo()+qOff)%QUOTES.length];
   return `<button class="quote" id="quoteCard"><span class="hint">chạm để đổi ↻</span><q>“${esc(t)}”</q>${a?`<small>— ${esc(a)}</small>`:''}</button>`;
 }
+/* ---------- đồng bộ nhiều thiết bị (mã hoá đầu cuối) ---------- */
+const SYNC_URL='https://nhatky-sync.vercel.app/api/sync';
+const sha=async t=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(t)))].map(x=>x.toString(16).padStart(2,'0')).join('');
+const ALPH='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const genCode=()=>{const b=crypto.getRandomValues(new Uint8Array(20));let t='';for(const x of b)t+=ALPH[x%32];return t.match(/.{5}/g).join('-')};
+const normCode=c=>(c.toUpperCase().replace(/[^A-Z0-9]/g,'').match(/.{1,5}/g)||[]).join('-');
+const syncCode=()=>localStorage.getItem('nk_sync');
+async function api(method,qs,body,tok){
+  const r=await fetch(SYNC_URL+'?'+qs,{method,headers:{'content-type':'application/json',...(tok?{'x-token':tok}:{})},body:body?JSON.stringify(body):undefined});
+  let j=null;try{j=await r.json()}catch{}return {status:r.status,j}}
+async function encPhoto(url){
+  const i=url.indexOf(','),mime=url.slice(5,url.indexOf(';')),iv=crypto.getRandomValues(new Uint8Array(12));
+  const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},KEY,fromB64(url.slice(i+1)));return {m:mime,iv:toB64(iv),ct:toB64(ct)}}
+async function decPhoto(o){
+  const b=await crypto.subtle.decrypt({name:'AES-GCM',iv:fromB64(o.iv)},KEY,fromB64(o.ct));return `data:${o.m};base64,`+toB64(b)}
+let syncing=false,syncT,codeShown=false;
+function scheduleSync(){clearTimeout(syncT);if(syncCode())syncT=setTimeout(()=>sync(),3000)}
+function setSyncStatus(t,err){const el=$('#syncInfo');if(el){el.textContent=t;el.style.color=err?'#c0392b':''}}
+function renderSyncUI(){
+  const on=!!syncCode();$('#syncOff').classList.toggle('hidden',on);$('#syncOnBox').classList.toggle('hidden',!on);
+  if(!on){setSyncStatus('Đang tắt');return}
+  const t=localStorage.getItem('nk_lastsync');setSyncStatus(t?'Đồng bộ lần cuối: '+new Date(+t).toLocaleString('vi-VN'):'Đã bật');
+  $('#syncCodeTxt').textContent=codeShown?syncCode():'•••••-•••••-•••••-•••••';$('#syncShow').textContent=codeShown?'Ẩn':'Hiện'}
+async function sync(){
+  const code=syncCode();if(!code||!KEY||syncing)return;
+  syncing=true;setSyncStatus('Đang đồng bộ…');
+  try{
+    const id=await sha(code),tok=await sha('w:'+code);
+    let g=await api('GET','id='+id);
+    if(g.status===404){
+      const i=await api('PUT','id='+id+'&init=1',{salt:localStorage.getItem(K.salt),chk:await enc('ok')},tok);
+      if(i.status!==200)throw new Error('không tạo được kho đồng bộ ('+i.status+')');
+      g=await api('GET','id='+id)}
+    if(g.status!==200)throw new Error('máy chủ lỗi '+g.status);
+    const idx=g.j.index||{},rph=g.j.photos||[];let changed=false;
+    const localAt=e=>Math.max(entries[e]?(entries[e].at||1):0,tombs[e]||0);
+    // 1) kéo bài mới/sửa từ máy chủ
+    for(const eid in idx){
+      if(idx[eid]<=localAt(eid))continue;
+      const r=await api('GET',`id=${id}&e=${eid}`);if(r.status!==200)continue;
+      let o;try{o=JSON.parse(await dec(r.j.enc))}catch{throw new Error('không giải mã được — kiểm tra mật khẩu')}
+      if(o.del){if(entries[eid]){(entries[eid].photos||[]).forEach(p=>{pDel(p);delete pCache[p]});delete entries[eid]}tombs[eid]=idx[eid]}
+      else{entries[eid]=o;delete tombs[eid]}
+      changed=true}
+    // 2) đẩy bài mới/sửa/xoá của máy này lên
+    const push=async(eid,at,obj)=>{const r=await api('PUT',`id=${id}&e=${eid}`,{at,enc:await enc(JSON.stringify(obj))},tok);
+      if(r.status!==200)throw new Error('không gửi được ('+r.status+')')};
+    for(const eid in entries){const at=entries[eid].at||1;if(at>(idx[eid]||0))await push(eid,at,entries[eid])}
+    for(const eid in tombs){if(tombs[eid]>(idx[eid]||0)&&!entries[eid])await push(eid,tombs[eid],{del:1})}
+    // 3) ảnh: tải ảnh còn thiếu, gửi ảnh máy chủ chưa có
+    for(const e of Object.values(entries))for(const pid of e.photos||[]){
+      const has=await pRaw(pid);
+      if(!has&&rph.includes(pid)){const r=await api('GET',`id=${id}&p=${pid}`);if(r.status===200){try{const u=await decPhoto(r.j);await pPut(pid,u);pCache[pid]=u;changed=true}catch{}}}
+      else if(has&&!rph.includes(pid)){const u=await pUrl(pid);if(u){const r=await api('PUT',`id=${id}&p=${pid}`,await encPhoto(u),tok);if(r.status===413)toast('Có ảnh quá lớn để đồng bộ')}}}
+    if(changed){await save(true);if(!$('#app').classList.contains('hidden'))render()}
+    localStorage.setItem('nk_lastsync',String(Date.now()));renderSyncUI();
+  }catch(e){setSyncStatus('Lỗi đồng bộ: '+(e.message||e),true)}
+  finally{syncing=false}}
+setInterval(()=>{if(KEY&&!document.hidden)sync()},120000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&KEY)sync()});
+async function linkDevice(){
+  const err=$('#lkErr'),code=normCode($('#lkCode').value),p=$('#lkPwL').value;err.textContent='';
+  if(code.length!==23)return err.textContent='Mã đồng bộ gồm 20 ký tự (4 nhóm 5 ký tự)';
+  if(!p)return err.textContent='Nhập mật khẩu nhật ký';
+  try{
+    err.textContent='Đang kết nối…';
+    const g=await api('GET','id='+await sha(code));
+    if(g.status===404)return err.textContent='Mã đồng bộ không đúng';
+    if(g.status!==200)return err.textContent='Máy chủ lỗi '+g.status;
+    const key=await deriveKey(p,g.j.salt);
+    try{await dec(g.j.chk,key)}catch{return err.textContent='Mật khẩu chưa đúng'}
+    localStorage.setItem(K.salt,g.j.salt);localStorage.setItem(K.pw,await hash(p,g.j.salt));localStorage.setItem('nk_sync',code);
+    await unlock(key);
+  }catch(e){err.textContent='Không kết nối được: '+(e.message||e)}}
+
 /* ---------- nhắc nhở ---------- */
 const wroteToday=()=>localStorage.getItem('nk_lastw')===key(new Date());
 function syncLastW(){const t=key(new Date());if(Object.values(entries).some(e=>e.date===t))localStorage.setItem('nk_lastw',t);else if(localStorage.getItem('nk_lastw')===t)localStorage.removeItem('nk_lastw')}
@@ -709,7 +806,7 @@ function saveEntry(){
   const title=$('#eTitle').value.trim(),body=$('#eBody').value;
   const old=(entries[editKey]&&entries[editKey].photos)||[];
   old.filter(id=>!curPh.includes(id)).forEach(id=>{pDel(id);delete pCache[id]});
-  if(!title&&!body.trim()&&mood==null&&!curPh.length){ if(entries[editKey]){delete entries[editKey];save()} closeSheet();return render()}
+  if(!title&&!body.trim()&&mood==null&&!curPh.length){ if(entries[editKey]){delete entries[editKey];tombs[editKey]=Date.now();save()} closeSheet();return render()}
   const id=editKey||('e'+uid());
   entries[id]={date:editDate,title,body,mood,fav,photos:curPh,at:Date.now()};selDay=editDate;save();addedPh=[];closeSheet();render();toast('Đã lưu ✓');
 }
@@ -735,7 +832,7 @@ $('#shClose').onclick=()=>{
   const e=entries[editKey],dirty=(e?e.title:'')!==$('#eTitle').value.trim()||(e?e.body:'')!==$('#eBody').value||(e?e.mood:null)!==mood&&!(e==null&&mood==null)||fav!==!!(e&&e.fav)||curPh.length!==((e&&e.photos)||[]).length;
   if(dirty&&!confirm('Thoát mà chưa lưu?'))return;closeSheet(true)};
 $('#shSave').onclick=saveEntry;
-$('#shDel').onclick=()=>{if(confirm('Xoá bài viết này?')){((entries[editKey]||{}).photos||[]).forEach(id=>{pDel(id);delete pCache[id]});addedPh=[];delete entries[editKey];save();closeSheet();render();toast('Đã xoá')}};
+$('#shDel').onclick=()=>{if(confirm('Xoá bài viết này?')){((entries[editKey]||{}).photos||[]).forEach(id=>{pDel(id);delete pCache[id]});addedPh=[];delete entries[editKey];tombs[editKey]=Date.now();save();closeSheet();render();toast('Đã xoá')}};
 
 $('#bFav').onclick=()=>{fav=!fav;drawFav()};
 $('#bIdea').onclick=()=>{const t=IDEAS[Math.floor(Math.random()*IDEAS.length)],b=$('#eBody');
@@ -761,6 +858,7 @@ async function loadBioUI(){
   $('#bioRow').classList.toggle('hidden',!ok);$('#sBio').checked=!!localStorage.getItem('nk_bio');
 }
 function loadSet(){
+  renderSyncUI();
   $('#sRem').checked=S.remOn;$('#sRemTime').value=S.remTime||'21:00';
   $('#sQuote').checked=S.quote;
   $('#encInfo').textContent=canCrypto?'AES-256 — chỉ mở được bằng mật khẩu':'Trình duyệt này không hỗ trợ mã hoá (cần https hoặc localhost)';
@@ -790,6 +888,7 @@ $('#sLock').onchange=e=>{S.lock=+e.target.value;put(K.set,S);bump()};
 $('#lockNow').onclick=lock;
 $('#chgPw').onclick=async()=>{
   const m=$('#pwMsg'),o=$('#oldPw').value,n=$('#newPw').value;m.style.color='#c0392b';
+  if(syncCode()){m.textContent='Đang bật đồng bộ — hãy tắt đồng bộ trước khi đổi mật khẩu';return}
   const salt=localStorage.getItem(K.salt);
   if(!(await checkPw(o)))return m.textContent='Mật khẩu hiện tại chưa đúng';
   if(n.length<8)return m.textContent='Mật khẩu mới cần ít nhất 8 ký tự';
@@ -814,6 +913,18 @@ $('#sBio').onchange=async e=>{
   }catch(err){e.target.checked=!!localStorage.getItem('nk_bio');toast('Không bật được')}
 };
 $('#bioBtn').onclick=bioUnlock;
+$('#linkBtn').onclick=()=>{$('#linkBox').classList.toggle('hidden');$('#lkCode').focus()};
+$('#linkGo').onclick=linkDevice;
+$('#syncOn').onclick=async()=>{
+  const c=genCode();localStorage.setItem('nk_sync',c);codeShown=true;renderSyncUI();
+  alert('Mã đồng bộ của anh:\n\n'+c+'\n\nHãy chép lại ở nơi an toàn. Trên thiết bị khác, nhập mã này cùng mật khẩu nhật ký.');
+  await sync()};
+$('#syncShow').onclick=()=>{codeShown=!codeShown;renderSyncUI()};
+$('#syncNow').onclick=()=>sync();
+$('#syncOffBtn').onclick=async()=>{
+  if(!confirm('Tắt đồng bộ và xoá dữ liệu đã đồng bộ trên máy chủ? Nhật ký trên các thiết bị vẫn còn.'))return;
+  try{const c=syncCode();await api('DELETE','id='+await sha(c),null,await sha('w:'+c))}catch{}
+  localStorage.removeItem('nk_sync');localStorage.removeItem('nk_lastsync');codeShown=false;renderSyncUI();toast('Đã tắt đồng bộ')};
 $('#exp').onclick=async()=>{
   const photos={};
   for(const k in entries)for(const id of entries[k].photos||[]){const u=await pUrl(id);if(u)photos[id]=u}
@@ -825,10 +936,10 @@ $('#impFile').onchange=async e=>{
   try{const j=JSON.parse(await f.text());if(!j.entries||typeof j.entries!=='object')throw 0;
     if(!confirm(`Nhập ${Object.keys(j.entries).length} bài viết? Bài trùng sẽ bị ghi đè.`))return;
     for(const id in (j.photos||{})){await pPut(id,j.photos[id]);pCache[id]=j.photos[id]}
-    Object.assign(entries,migrate(j.entries));save();render();toast('Đã nhập xong ✓')}
+    const mi=migrate(j.entries);Object.keys(mi).forEach(k=>{delete tombs[k];mi[k].at=mi[k].at||Date.now()});Object.assign(entries,mi);save();render();toast('Đã nhập xong ✓')}
   catch{alert('File không hợp lệ')} e.target.value='';
 };
-$('#wipe').onclick=()=>{if(confirm('Xoá TOÀN BỘ nhật ký? Không thể khôi phục.')&&confirm('Chắc chắn xoá hết?')){entries={};save();pClear();Object.keys(pCache).forEach(k=>delete pCache[k]);render();toast('Đã xoá hết')}};
+$('#wipe').onclick=()=>{if(confirm('Xoá TOÀN BỘ nhật ký? Không thể khôi phục.')&&confirm('Chắc chắn xoá hết?')){Object.keys(entries).forEach(k=>tombs[k]=Date.now());entries={};save();pClear();Object.keys(pCache).forEach(k=>delete pCache[k]);render();toast('Đã xoá hết')}};
 
 applyTheme();drawAvatar();lockUI();
 if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js').catch(()=>{});
